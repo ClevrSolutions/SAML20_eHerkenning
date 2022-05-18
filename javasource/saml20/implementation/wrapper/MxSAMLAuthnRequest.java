@@ -5,6 +5,7 @@ import com.mendix.core.CoreException;
 import com.mendix.logging.ILogNode;
 import com.mendix.systemwideinterfaces.core.IContext;
 import com.mendix.systemwideinterfaces.core.IMendixObject;
+import eherkenning.implementation.OpenSAMLUtils;
 import org.joda.time.DateTime;
 import org.opensaml.saml.common.SAMLException;
 import org.opensaml.saml.common.SAMLVersion;
@@ -74,10 +75,11 @@ public class MxSAMLAuthnRequest extends MxSAMLRequest {
 
             authRequest.setNameIDPolicy(newNameIDPolicy);
         } // else skip altogether
-
+        
         authRequest.setDestination(signonLocation.getLocation());
         authRequest.setIssueInstant(issueInstant);
-        authRequest.setProtocolBinding(SAMLConstants.SAML2_POST_BINDING_URI);
+        // authRequest.setProtocolBinding(SAMLConstants.SAML2_POST_BINDING_URI); // Original
+        authRequest.setProtocolBinding(OpenSAMLUtils.getProtocolBinding(context, metadata));
         authRequest.setAssertionConsumerServiceURL(Constants._getInstance().getSP_URI() + Constants._getInstance().SSO_ASSERTION_PATH);
         authRequest.setConsent("urn:oasis:names:tc:SAML:2.0:consent:unspecified");
         authRequest.setIssuer(issuer);
