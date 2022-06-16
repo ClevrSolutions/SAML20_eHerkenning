@@ -10,6 +10,11 @@ import org.opensaml.saml.saml2.core.Attribute;
 import org.opensaml.saml.saml2.core.AttributeStatement;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.opensaml.saml.saml2.core.NameID;
+import org.opensaml.security.credential.Credential;
+
+import eherkenning.implementation.ArtifactResolver;
+import eherkenning.implementation.OpenSAMLUtils;
 import saml20.implementation.common.Constants;
 import saml20.implementation.common.HTTPUtils;
 import saml20.implementation.common.SAMLUtil;
@@ -47,12 +52,13 @@ public class ArtifactHandler extends SAMLHandler {
     @Override
     public void handleRequest(SAMLRequestContext context) throws SAMLException {
         printTraceInfo(context);
-        MxSAMLResponse response = HTTPUtils.extract(context.getRequest().getHttpServletRequest());
+        // MxSAMLResponse response = HTTPUtils.extract(context.getRequest().getHttpServletRequest()); // Original
+        MxSAMLResponse response = ArtifactResolver.getResponse(context);
         handleSAMLResponse(context, response);
     }
 
     private void handleSAMLResponse(SAMLRequestContext samlContext, MxSAMLResponse response) throws SAMLException {
-        SAMLRequest correspondingSAMLRequest = null;
+    	SAMLRequest correspondingSAMLRequest = null;
         SSOConfiguration ssoconfig = null;
         String principalKey = null;
         String userPrincipal = null;
@@ -74,7 +80,7 @@ public class ArtifactHandler extends SAMLHandler {
             String entityAlias = metadata.getAlias(samlContext.getIContext());
 
             MxSAMLAssertion assertion = response.getAssertion(samlContext.getCredential());
-
+            
             response.validateResponse(samlContext.getSpMetadata().getAssertionConsumerServiceLocation(0), samlContext.getIdpMetadata(), entityId, false);
             response.getResponse().getAssertions().add(assertion.getAssertion());
             String spEntityID = samlContext.getSpMetadata().getEntityID();
@@ -98,7 +104,8 @@ public class ArtifactHandler extends SAMLHandler {
 
                     HashMap<String, Object> assertionAttributes = null;
                     try {
-                        assertionAttributes = retrieveAssertionAttributes(assertion);
+                    	// assertionAttributes = retrieveAssertionAttributes(assertion); // Original
+                        assertionAttributes = retrieveAssertionAttributes(assertion, samlContext.getCredential());
                     } catch (Exception e2) {
                         throw new SAMLException("Unable to retrieve the assertion attributes, " + e2.getMessage(), e2);
                     }
@@ -188,13 +195,14 @@ public class ArtifactHandler extends SAMLHandler {
 
                     throw e;
                 }
-            }
-        } finally {
+           }
+		} finally {
             SAMLUtil.logSAMLResponseMessage(samlContext, correspondingSAMLRequest, response.getResponse(), userPrincipal, ssoconfig.getMendixObject());
         }
     }
 
-    public HashMap<String, Object> retrieveAssertionAttributes(MxSAMLAssertion mxSAMLAssertion) throws CoreException {
+    // public HashMap<String, Object> retrieveAssertionAttributes(MxSAMLAssertion mxSAMLAssertion) throws CoreException { // Original
+    public HashMap<String, Object> retrieveAssertionAttributes(MxSAMLAssertion mxSAMLAssertion, Credential credential) throws CoreException {
         HashMap<String, Object> hashmap = new HashMap<String, Object>();
 
         List<AttributeStatement> attributeStatements = mxSAMLAssertion.getAssertion().getAttributeStatements();
@@ -213,7 +221,15 @@ public class ArtifactHandler extends SAMLHandler {
 
                 for (int y = 0; y < attributeValues.size(); y++) {
                     String strAttributeValue = attributeValues.get(y).getDOM().getTextContent();
-
+                    // CUSTOM for eHerkenning
+                    // Replace attribute name key value pair, when value contains EncryptedID element with the NameID
+                    NameID nameID = OpenSAMLUtils.getNameIdFromEncryptedID(attributeValues.get(y), credential);
+                    if (nameID != null) {
+                    	strAttributeName = nameID.getNameQualifier();
+                    	strAttributeValue = nameID.getValue();
+                    	_logNode.info("getNameIdFromEncryptedID= " + strAttributeName + " : " + strAttributeValue);
+                    }
+                    // END CUSTOM
                     if (hashmap.containsKey(strAttributeName)) {
                         Object value = hashmap.get(strAttributeName);
                         String[] valueArr = null;
