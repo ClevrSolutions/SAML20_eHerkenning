@@ -45,7 +45,8 @@ public class MxSAMLAuthnRequest extends MxSAMLRequest {
         DateTime issueInstant = new DateTime();
         AuthnRequestBuilder authRequestBuilder = new AuthnRequestBuilder();
         AuthnRequest authRequest = authRequestBuilder.buildObject(Constants.PROTOCOL, "AuthnRequest", "samlp");
-        authRequest.setAttributeConsumingServiceIndex(1);
+        // authRequest.setAttributeConsumingServiceIndex(1); // AS: Original
+        authRequest.setAttributeConsumingServiceIndex(OpenSAMLUtils.getAttributeConsumingServiceIndex(context, metadata));
 
         // AuthnContext, only add if authn context classes are actually configured (ticket #40347)
         AuthnContextClassRefBuilder authnContextClassRefBuilder = new AuthnContextClassRefBuilder();
@@ -75,10 +76,10 @@ public class MxSAMLAuthnRequest extends MxSAMLRequest {
 
             authRequest.setNameIDPolicy(newNameIDPolicy);
         } // else skip altogether
-        
+
         authRequest.setDestination(signonLocation.getLocation());
         authRequest.setIssueInstant(issueInstant);
-        // authRequest.setProtocolBinding(SAMLConstants.SAML2_POST_BINDING_URI); // Original
+        // authRequest.setProtocolBinding(SAMLConstants.SAML2_POST_BINDING_URI); // Original 
         authRequest.setProtocolBinding(OpenSAMLUtils.getProtocolBinding(context, metadata));
         authRequest.setAssertionConsumerServiceURL(Constants._getInstance().getSP_URI() + Constants._getInstance().SSO_ASSERTION_PATH);
         authRequest.setConsent("urn:oasis:names:tc:SAML:2.0:consent:unspecified");
