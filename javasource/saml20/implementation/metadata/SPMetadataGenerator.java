@@ -1,18 +1,8 @@
 package saml20.implementation.metadata;
 
-import com.mendix.core.Core;
-import com.mendix.logging.ILogNode;
-import com.mendix.systemwideinterfaces.core.IContext;
-import com.mendix.systemwideinterfaces.core.IMendixObject;
-import org.opensaml.saml.common.SAMLException;
-import org.opensaml.saml.common.xml.SAMLConstants;
-import org.opensaml.security.x509.BasicX509Credential;
-import org.w3c.dom.DOMException;
-import org.w3c.dom.Document;
-import org.w3c.dom.Element;
-import saml20.implementation.common.Constants;
-import saml20.implementation.security.CredentialRepository;
-import saml20.proxies.SPMetadata;
+import java.io.ByteArrayOutputStream;
+import java.security.cert.CertificateEncodingException;
+import java.util.Base64;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -23,9 +13,24 @@ import javax.xml.transform.TransformerException;
 import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
-import java.io.ByteArrayOutputStream;
-import java.security.cert.CertificateEncodingException;
-import java.util.Base64;
+import java.util.UUID;
+
+import org.opensaml.saml.common.SAMLException;
+import org.opensaml.saml.common.xml.SAMLConstants;
+import org.opensaml.security.x509.BasicX509Credential;
+import org.w3c.dom.DOMException;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+
+import com.mendix.core.Core;
+import com.mendix.logging.ILogNode;
+import com.mendix.systemwideinterfaces.core.IContext;
+import com.mendix.systemwideinterfaces.core.IMendixObject;
+
+import eherkenning.implementation.OpenSAMLUtils;
+import saml20.implementation.common.Constants;
+import saml20.implementation.security.CredentialRepository;
+import saml20.proxies.SPMetadata;
 
 public class SPMetadataGenerator {
 
@@ -52,11 +57,16 @@ public class SPMetadataGenerator {
 			}
 
 			// root elements
-			Document doc = docBuilder.newDocument();			
+			Document doc = docBuilder.newDocument();
 
 			Element entityDescriptor = doc.createElement("md:EntityDescriptor");
+			entityDescriptor.setAttribute("ID", "_" + UUID.randomUUID().toString()); // CUSTOM
 			entityDescriptor.setAttribute("entityID", entityId);
+			entityDescriptor.setAttribute("cacheDuration", "P3Y");
 			entityDescriptor.setAttribute("xmlns:md", SAMLConstants.SAML20MD_NS);
+			entityDescriptor.setAttribute("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance"); // CUSTOM
+			entityDescriptor.setAttribute("xmlns:xs", "http://www.w3.org/2001/XMLSchema"); // CUSTOM
+			entityDescriptor.setAttribute("xmlns:saml", "urn:oasis:names:tc:SAML:2.0:assertion"); // CUSTOM
 			doc.appendChild(entityDescriptor);
 
 			if ( !applicationRootURL.endsWith("/") ) {
@@ -81,12 +91,16 @@ public class SPMetadataGenerator {
 					// KeyDescriptor + Certificate information
 					Element keyDescriptor = doc.createElement("md:KeyDescriptor");
 
+					keyDescriptor.setAttribute("use", "signing"); // CUSTOM
 					Element keyInfo = doc.createElement("ds:KeyInfo");
 					keyInfo.setAttribute("xmlns:ds", "http://www.w3.org/2000/09/xmldsig#");
+					Element keyName = doc.createElement("ds:KeyName"); // CUSTOM
+					keyName.setTextContent(UUID.randomUUID().toString()); // CUSTOM
+					keyInfo.appendChild(keyName); // CUSTOM
 					keyDescriptor.appendChild(keyInfo);
 
 					Element X509Data = doc.createElement("ds:X509Data");
-					keyInfo.appendChild(X509Data);
+					keyInfo.appendChild(X509Data);					
 
 					Element X509Certificate = doc.createElement("ds:X509Certificate");
 
@@ -95,6 +109,23 @@ public class SPMetadataGenerator {
 					X509Data.appendChild(X509Certificate);
 
 					spssoDescriptor.appendChild(keyDescriptor);
+					
+					// CUSTOM START key for encryption
+					Element keyDescriptor2 = doc.createElement("md:KeyDescriptor");
+					keyDescriptor2.setAttribute("use", "encryption");
+					Element keyInfo2 = doc.createElement("ds:KeyInfo");
+					keyInfo2.setAttribute("xmlns:ds", "http://www.w3.org/2000/09/xmldsig#");
+					Element keyName2 = doc.createElement("ds:KeyName");
+					keyName2.setTextContent(UUID.randomUUID().toString());
+					keyInfo2.appendChild(keyName2);
+					keyDescriptor2.appendChild(keyInfo2);
+					Element X509Data2 = doc.createElement("ds:X509Data");
+					keyInfo2.appendChild(X509Data2);
+					Element X509Certificate2 = doc.createElement("ds:X509Certificate");
+					X509Certificate2.setTextContent(Base64.getEncoder().encodeToString(cert.getEntityCertificate().getEncoded()));
+					X509Data2.appendChild(X509Certificate2);
+					spssoDescriptor.appendChild(keyDescriptor2);
+					// CUSTOM END
 				}
 			}
 			catch( CertificateEncodingException | DOMException e ) {
@@ -117,6 +148,7 @@ public class SPMetadataGenerator {
 			acs1.setAttribute("Location", applicationRootURL + Constants._getInstance().SSO_ASSERTION_PATH);
 			acs1.setAttribute("index", "1");
 			acs1.setAttribute("Binding", SAMLConstants.SAML2_POST_BINDING_URI);
+			acs1.setAttribute("isDefault", "true"); // CUSTOM
 			spssoDescriptor.appendChild(acs1);
 
 			Element acs2 = doc.createElement("md:AssertionConsumerService");
@@ -125,6 +157,23 @@ public class SPMetadataGenerator {
 			acs2.setAttribute("Binding", SAMLConstants.SAML2_ARTIFACT_BINDING_URI);
 			spssoDescriptor.appendChild(acs2);
 
+			// CUSTOM AttributeConsumingService
+			Element atcs = doc.createElement("md:AttributeConsumingService");
+			atcs.setAttribute("index", "0");
+			atcs.setAttribute("isDefault", "true");
+			Element sn = doc.createElement("md:ServiceName");
+			sn.setAttribute("xml:lang", "nl-NL");
+			sn.setTextContent("MijnNZa");
+			atcs.appendChild(sn);
+			Element ra = doc.createElement("md:RequestedAttribute");
+			ra.setAttribute("Name", "urn:nl-eid-gdi:1.0:ServiceUUID");
+			Element av = doc.createElement("saml:AttributeValue");
+			av.setAttribute("xsi:type", "xs:string");
+			av.setTextContent("51444853-3657-4754-574c-434e36484e4e");
+			ra.appendChild(av);
+			atcs.appendChild(ra);
+			spssoDescriptor.appendChild(atcs);
+			// CUSTOM END
 			// Organization
 			Element organization = doc.createElement("md:Organization");
 			entityDescriptor.appendChild(organization);
@@ -170,7 +219,8 @@ public class SPMetadataGenerator {
 			TransformerFactory transformerFactory = TransformerFactory.newInstance();
 			Transformer transformer = transformerFactory.newTransformer();
 			transformer.setOutputProperty(OutputKeys.INDENT, "yes");
-
+			
+			doc = OpenSAMLUtils.addSign(doc, cert.getPrivateKey(), cert.getEntityCertificate(), "", ""); // Custom	
 			DOMSource source = new DOMSource(doc);
 
 			ByteArrayOutputStream out = new ByteArrayOutputStream();
